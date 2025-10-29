@@ -165,7 +165,16 @@ void fault_handler(struct Trapframe *tf)
 			//TODO: [PROJECT'25.GM#3] FAULT HANDLER I - #2 Check for invalid pointers
 			//(e.g. pointing to unmarked user heap page, kernel or wrong access rights),
 			//your code is here
+			int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
+			bool page_does_not_exist = (perms == -1);
+			bool page_is_not_user = ((perms & PERM_USER) == 0);
+			bool page_is_not_writeable = ((perms & PERM_WRITEABLE) == 0);
 
+			bool is_page_within_user_heap = (fault_va >= USER_HEAP_START && fault_va < USER_HEAP_MAX);
+			bool page_is_not_UHpage = is_page_within_user_heap && ((perms & PERM_UHPAGE) == 0);
+			
+			if (page_does_not_exist || page_is_not_user || page_is_not_writeable || page_is_not_UHpage)
+				env_exit();
 			/*============================================================================================*/
 		}
 
@@ -258,7 +267,39 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 		//TODO: [PROJECT'25.GM#3] FAULT HANDLER I - #3 placement
 		//Your code is here
 		//Comment the following line
-		panic("page_fault_handler().PLACEMENT is not implemented yet...!!");
+		// panic("page_fault_handler().PLACEMENT is not implemented yet...!!");
+
+		// Allocate space for the faulted page
+		int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
+		perms |= PERM_PRESENT | PERM_USER;
+		int ret = alloc_page(faulted_env->env_page_directory, fault_va, perms, 0);
+		if (ret == E_NO_MEM) {
+			panic("No enough memory for allocating a new frame");
+		}
+
+		// Read the faulted page from page file to memory
+		ret = pf_read_env_page(faulted_env, fault_va);
+
+		// If the page does not exist on page file, then
+		if (ret == E_PAGE_NOT_EXIST_IN_PF) {
+			bool within_UStack = fault_va < USTACKTOP && fault_va >= USTACKBOTTOM;
+			bool within_UHeap = fault_va < USER_HEAP_MAX && fault_va >= USER_HEAP_START;
+
+			// If it is a stack or a heap page, then, it’s OK.
+			if (within_UHeap || within_UStack)
+				pf_add_empty_env_page(faulted_env, fault_va, 0);
+			
+			// Else, it must be rejected without harm to the kernel or other running processes, by exiting the process.
+			else {
+				unmap_frame(faulted_env->env_page_directory, fault_va);
+				env_exit();
+			}
+		}
+		
+		// Reflect the changes in the page working set list (i.e. add new element to list & update its last one)
+		struct WorkingSetElement *wsElement = env_page_ws_list_create_element(faulted_env, fault_va);
+		LIST_INSERT_TAIL(&(faulted_env->page_WS_list), wsElement);
+		faulted_env->page_last_WS_element = wsElement;
 	}
 	else
 	{
