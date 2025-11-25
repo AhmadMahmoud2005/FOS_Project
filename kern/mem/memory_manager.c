@@ -129,6 +129,7 @@ void initialize_paging()
 void initialize_frame_info(struct FrameInfo *ptr_frame_info)
 {
 	memset(ptr_frame_info, 0, sizeof(*ptr_frame_info));
+	ptr_frame_info->mapped_page = 0;
 }
 
 //
@@ -417,6 +418,7 @@ int map_frame(uint32 *ptr_page_directory, struct FrameInfo *ptr_frame_info, uint
 			unmap_frame(ptr_page_directory , virtual_address);
 	}
 	ptr_frame_info->references++;
+	ptr_frame_info->mapped_page = PPN(virtual_address);
 
 	/*********************************************************************************/
 	/*NEW'23 el7:)
@@ -539,6 +541,7 @@ int loadtime_map_frame(uint32 *ptr_page_directory, struct FrameInfo *ptr_frame_i
 	}
 
 	ptr_frame_info->references++;
+	ptr_frame_info->mapped_page = PPN(virtual_address);
 	ptr_page_table[PTX(virtual_address)] = CONSTRUCT_ENTRY(physical_address , perm | PERM_PRESENT);
 
 	return 0;
