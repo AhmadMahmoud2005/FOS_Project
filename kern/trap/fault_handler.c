@@ -168,12 +168,13 @@ void fault_handler(struct Trapframe *tf)
 			int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
 			bool page_does_not_exist = (perms == -1);
 			bool page_is_not_user = ((perms & PERM_USER) == 0);
-			bool page_is_not_writeable = ((perms & PERM_WRITEABLE) == 0);
+			bool page_is_not_writeable = ((perms & PERM_PRESENT) == 1 && (perms & PERM_WRITEABLE) == 0);
 
 			bool is_page_within_user_heap = (fault_va >= USER_HEAP_START && fault_va < USER_HEAP_MAX);
 			bool page_is_not_UHpage = is_page_within_user_heap && ((perms & PERM_UHPAGE) == 0);
+			bool illegal_address = fault_va >= USER_LIMIT;
 			
-			if (page_does_not_exist || page_is_not_user || page_is_not_writeable || page_is_not_UHpage)
+			if (page_does_not_exist || illegal_address || page_is_not_user || page_is_not_writeable || page_is_not_UHpage)
 				env_exit();
 			/*============================================================================================*/
 		}
@@ -256,88 +257,85 @@ int get_optimal_num_faults(struct WS_List *initWorkingSet, int maxWSSize, struct
 void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 {
 #if USE_KHEAP
-	struct WorkingSetElement *victimWSElement = NULL;
-	uint32 wsSize = LIST_SIZE(&(faulted_env->page_WS_list));
-#else
-	int iWS =faulted_env->page_last_WS_index;
-	uint32 wsSize = env_page_ws_get_size(faulted_env);
-#endif
-	if(wsSize < (faulted_env->page_WS_max_size))
+	if (isPageReplacmentAlgorithmOPTIMAL())
 	{
-		//TODO: [PROJECT'25.GM#3] FAULT HANDLER I - #3 placement
+		//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #1 Optimal Reference Stream
 		//Your code is here
 		//Comment the following line
-		// panic("page_fault_handler().PLACEMENT is not implemented yet...!!");
-
-		// Allocate space for the faulted page
-		int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
-		perms |= PERM_PRESENT | PERM_USER;
-		int ret = alloc_page(faulted_env->env_page_directory, fault_va, perms, 0);
-		if (ret == E_NO_MEM) {
-			panic("No enough memory for allocating a new frame");
-		}
-
-		// Read the faulted page from page file to memory
-		ret = pf_read_env_page(faulted_env, fault_va);
-
-		// If the page does not exist on page file, then
-		if (ret == E_PAGE_NOT_EXIST_IN_PF) {
-			bool within_UStack = fault_va < USTACKTOP && fault_va >= USTACKBOTTOM;
-			bool within_UHeap = fault_va < USER_HEAP_MAX && fault_va >= USER_HEAP_START;
-
-			// If it is a stack or a heap page, then, it’s OK.
-			if (within_UHeap || within_UStack)
-				pf_add_empty_env_page(faulted_env, fault_va, 0);
-			
-			// Else, it must be rejected without harm to the kernel or other running processes, by exiting the process.
-			else {
-				unmap_frame(faulted_env->env_page_directory, fault_va);
-				env_exit();
-			}
-		}
-		
-		// Reflect the changes in the page working set list (i.e. add new element to list & update its last one)
-		struct WorkingSetElement *wsElement = env_page_ws_list_create_element(faulted_env, fault_va);
-		LIST_INSERT_TAIL(&(faulted_env->page_WS_list), wsElement);
-		faulted_env->page_last_WS_element = wsElement;
+		panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
 	}
 	else
 	{
-		if (isPageReplacmentAlgorithmOPTIMAL())
+		struct WorkingSetElement *victimWSElement = NULL;
+		uint32 wsSize = LIST_SIZE(&(faulted_env->page_WS_list));
+		if(wsSize < (faulted_env->page_WS_max_size))
 		{
-			//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #1 Optimal Reference Stream
+			//TODO: [PROJECT'25.GM#3] FAULT HANDLER I - #3 placement
 			//Your code is here
 			//Comment the following line
-			panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
+			// panic("page_fault_handler().PLACEMENT is not implemented yet...!!");
+			int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
+			perms |= PERM_PRESENT | PERM_USER;
+			int ret = alloc_page(faulted_env->env_page_directory, fault_va, perms, 0);
+			if (ret == E_NO_MEM) {
+				panic("No enough memory for allocating a new frame");
+				return;
+			}
+
+			// Read the faulted page from page file to memory
+			ret = pf_read_env_page(faulted_env, (void*)fault_va);
+
+			// If the page does not exist on page file, then
+			if (ret == E_PAGE_NOT_EXIST_IN_PF) {
+				bool within_UStack = fault_va < USTACKTOP && fault_va >= USTACKBOTTOM;
+				bool within_UHeap = fault_va < USER_HEAP_MAX && fault_va >= USER_HEAP_START;
+
+				// If it is a stack or a heap page, then, it’s OK.
+				if (within_UHeap || within_UStack)
+					pf_add_empty_env_page(faulted_env, fault_va, 0);
+				
+				// Else, it must be rejected without harm to the kernel or other running processes, by exiting the process.
+				else {
+					unmap_frame(faulted_env->env_page_directory, fault_va);
+					env_exit();
+				}
+			}
+			
+			// Reflect the changes in the page working set list (i.e. add new element to list & update its last one)
+			struct WorkingSetElement *wsElement = env_page_ws_list_create_element(faulted_env, fault_va);
+			LIST_INSERT_TAIL(&(faulted_env->page_WS_list), wsElement);
+			faulted_env->page_last_WS_element = wsElement;
 		}
-		else if (isPageReplacmentAlgorithmOPTIMAL())
+		else
 		{
-			//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #3 Clock Replacement
-			//Your code is here
-			//Comment the following line
-			panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
-		}
-		else if (isPageReplacmentAlgorithmLRU(PG_REP_LRU_TIME_APPROX))
-		{
-			//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #2 LRU Aging Replacement
-			//Your code is here
-			//Comment the following line
-			panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
-		}
-		else if (isPageReplacmentAlgorithmModifiedCLOCK())
-		{
-			//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #3 Modified Clock Replacement
-			//Your code is here
-			//Comment the following line
-			panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
+			if (isPageReplacmentAlgorithmCLOCK())
+			{
+				//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #3 Clock Replacement
+				//Your code is here
+				//Comment the following line
+				panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
+			}
+			else if (isPageReplacmentAlgorithmLRU(PG_REP_LRU_TIME_APPROX))
+			{
+				//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #2 LRU Aging Replacement
+				//Your code is here
+				//Comment the following line
+				panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
+			}
+			else if (isPageReplacmentAlgorithmModifiedCLOCK())
+			{
+				//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #3 Modified Clock Replacement
+				//Your code is here
+				//Comment the following line
+				panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
+			}
 		}
 	}
+#endif
 }
 
 void __page_fault_handler_with_buffering(struct Env * curenv, uint32 fault_va)
 {
 	panic("this function is not required...!!");
 }
-
-
 

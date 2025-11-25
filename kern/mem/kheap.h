@@ -2,7 +2,7 @@
 #define FOS_KERN_KHEAP_H_
 
 #ifndef FOS_KERNEL
-# error "This is a FOS kernel header; user programs should not #include it"
+// # error "This is a FOS kernel header; user programs should not #include it"
 #endif
 
 #include <inc/types.h>
