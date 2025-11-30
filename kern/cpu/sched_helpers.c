@@ -690,15 +690,40 @@ int get_load_average()
 /********* for Priority RR Scheduler *************/
 void env_set_priority(int envID, int priority)
 {
-	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 env_set_priority
-	//Your code is here
-	//Comment the following line
-	panic("env_set_priority() is not implemented yet...!!");
+	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 env_set_priorit
+		//Your code is here
+		 acquire_kspinlock(&ProcessQueues.qlock);
+		
+		struct Env* en ;
+		int res1 = envid2env (envID , &en , 0);
+		 
+		if (res1 < 0 ){
+			release_kspinlock(&ProcessQueues.qlock);
+					return ;
+		}
+		if (en -> env_status == ENV_READY){
+			
+			 remove_from_queue(&ProcessQueues.env_ready_queues[en->priority], en);
+		en -> priority = priority;
+		
+		sched_insert_ready(en);
+		}
+		else {
+			 en-> priority = priority;
+					}
+		release_kspinlock (&ProcessQueues.qlock);
+
+		
+	// panic("env_set_priority() is not implemented yet...!!");
 }
+uint32 starvTH =0 ;
 void sched_set_starv_thresh(uint32 starvThresh)
 {
-	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 sched_set_starv_thresh
+//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 sched_set_starv_thresh
 	//Your code is here
+	
+	starvTH =starvThresh;
+
 	//Comment the following line
-	panic("sched_set_starv_thresh() is not implemented yet...!!");
+	// panic("sched_set_starv_thresh() is not implemented yet...!!");
 }
