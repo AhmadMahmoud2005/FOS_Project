@@ -32,16 +32,21 @@ void sleep(struct Channel *chan, struct kspinlock* lk)
 	//Your code is here
 	//Comment the following line
 	//panic("sleep() is not implemented yet...!!");
-	acquire_kspinlock(&ProcessQueues.qlock);
+	/* Release the provided lock first, then acquire the scheduler queues
+	 * lock to enqueue this process atomically with respect to the scheduler. */
 	release_kspinlock(lk);
-	
+	acquire_kspinlock(&ProcessQueues.qlock);
+
 	struct Env *currProc = get_cpu_proc();
 	enqueue(&chan->queue, currProc);
 	currProc->env_status = ENV_BLOCKED;
 
+	/* Switch to scheduler while holding ProcessQueues.qlock and with
+	 * interrupts disabled count = 1 (pushcli done by acquire_kspinlock). */
 	sched();
 
 	release_kspinlock(&ProcessQueues.qlock);
+	/* Re-acquire the original lock before returning, matching xv6 semantics. */
 	acquire_kspinlock(lk);
 	
 }

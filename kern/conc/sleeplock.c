@@ -29,7 +29,10 @@ void acquire_sleeplock(struct sleeplock *lk)
 	//Your code is here
 	//Comment the following line
 	//panic("acquire_sleeplock() is not implemented yet...!!");
-	
+
+	if (holding_sleeplock(lk)) {
+    panic(" holding lock");
+	}
 	acquire_kspinlock(&(lk->lk));
 	
 	while(lk->locked)
@@ -49,7 +52,10 @@ void release_sleeplock(struct sleeplock *lk)
 	//Your code is here
 	//Comment the following line
 	//panic("release_sleeplock() is not implemented yet...!!");
-	
+	if (!holding_sleeplock(lk)) 
+    {
+        panic("lock not held");
+    }
 	acquire_kspinlock(&(lk->lk));
 	
 	lk->locked = 0;
