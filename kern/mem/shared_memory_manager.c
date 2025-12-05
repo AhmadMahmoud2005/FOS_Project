@@ -1,5 +1,8 @@
-#include <inc/memlayout.h>
+#define FOS_KERNEL
 #include "shared_memory_manager.h"
+#include <kern/conc/kspinlock.h>  
+
+#include <inc/memlayout.h>
 
 #include <inc/mmu.h>
 #include <inc/error.h>
@@ -104,10 +107,46 @@ int size_of_shared_object(int32 ownerID, char* shareName)
 //Return: allocatedObject (pointer to struct Share) passed by reference
 struct Share* alloc_share(int32 ownerID, char* shareName, uint32 size, uint8 isWritable)
 {
+	
+#if USE_KHEAP
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #1 alloc_share
 	//Your code is here
+	struct Share *shared_ob = (struct Share*) kmalloc(sizeof(struct Share));
+	if(shared_ob == NULL){
+		return NULL;
+	}
+	shared_ob->ownerID = ownerID ;
+	int i;
+    for (i = 0; i < 63 && shareName[i]; i++)
+	{
+        shared_ob->name[i] = shareName[i];
+	}
+    shared_ob->name[i] = '\0';
+	shared_ob->size = size;
+	shared_ob->isWritable = isWritable;
+	shared_ob->references = 1;
+	int count = 0;
+	int size2 = size;
+	while(size2 > 0)
+	{
+		size2 = size2 - PAGE_SIZE;
+		count++;
+	}
+    shared_ob->framesStorage = (struct FrameInfo **) kmalloc(count * sizeof(struct FrameInfo *));
+	if(shared_ob->framesStorage == NULL){
+		kfree((void*)shared_ob);
+        shared_ob = NULL;
+		return NULL;
+	}
+    for(int i = 0; i < count ; i++){
+		shared_ob->framesStorage[i] = NULL;
+	}
+    return shared_ob;
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 	//Comment the following line
-	panic("alloc_share() is not implemented yet...!!");
+	//panic("alloc_share() is not implemented yet...!!");
 }
 
 
@@ -116,13 +155,43 @@ struct Share* alloc_share(int32 ownerID, char* shareName, uint32 size, uint8 isW
 //=========================
 int create_shared_object(int32 ownerID, char* shareName, uint32 size, uint8 isWritable, void* virtual_address)
 {
+#if USE_KHEAP
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #3 create_shared_object
-	//Your code is here
-	//Comment the following line
-	panic("create_shared_object() is not implemented yet...!!");
-
 	struct Env* myenv = get_cpu_proc(); //The calling environment
-
+	//Your code is here
+	struct Share* share_exist = find_share(ownerID , shareName);
+	if(share_exist != NULL){
+		return E_SHARED_MEM_EXISTS;
+	}
+	int count = 0;
+	int size2 = size;
+	while(size2 > 0)
+	{
+		size2 = size2 - PAGE_SIZE;
+		count++;
+	}
+	share_exist = alloc_share(ownerID, shareName, size, isWritable);
+	if(share_exist == NULL){
+		return E_NO_SHARE;
+	}
+	int32 virtual_address2 = ((int32)virtual_address);
+	for(int i = 0 ; i < count ; i++){
+		struct FrameInfo *ptr_frame_info ;
+        allocate_frame(&ptr_frame_info);
+		map_frame(myenv->env_page_directory, ptr_frame_info,(uint32) virtual_address, PERM_USER | PERM_WRITEABLE);
+        share_exist->framesStorage[i]= ptr_frame_info;
+		virtual_address = (void*)((uint32) virtual_address + PAGE_SIZE);
+	}
+	share_exist->ID = (int32)((virtual_address2) & 0x7FFFFFFF);
+	acquire_kspinlock(&(AllShares.shareslock));
+	LIST_INSERT_TAIL(&(AllShares.shares_list), share_exist);
+    release_kspinlock(&(AllShares.shareslock));
+	return share_exist->ID;
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
+	//Comment the following line
+	//panic("create_shared_object() is not implemented yet...!!");
 	// This function should create the shared object at the given virtual address with the given size
 	// and return the ShareObjectID
 	// RETURN:
@@ -137,12 +206,41 @@ int create_shared_object(int32 ownerID, char* shareName, uint32 size, uint8 isWr
 //======================
 int get_shared_object(int32 ownerID, char* shareName, void* virtual_address)
 {
+#if USE_KHEAP
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #5 get_shared_object
 	//Your code is here
 	//Comment the following line
-	panic("get_shared_object() is not implemented yet...!!");
+	//panic("get_shared_object() is not implemented yet...!!");
 
 	struct Env* myenv = get_cpu_proc(); //The calling environment
+
+	struct Share* share_exist = find_share(ownerID , shareName);
+	if(share_exist == NULL){
+		return E_SHARED_MEM_NOT_EXISTS;
+	}
+	int size = size_of_shared_object(ownerID , shareName);
+	uint32 size2 = ROUNDUP(size, PAGE_SIZE);
+	uint32 count = size2 >> PGSHIFT;
+	for(int i = 0 ; i < count ; i++){
+		struct FrameInfo *ptr_frame_info = share_exist->framesStorage[i];
+		if(ptr_frame_info == NULL) {
+			return E_SHARED_MEM_NOT_EXISTS; 
+		}
+		if(share_exist->isWritable == 1){
+			map_frame(myenv->env_page_directory, ptr_frame_info, (uint32)virtual_address, PERM_USER | PERM_WRITEABLE);
+		}else{
+			
+			map_frame(myenv->env_page_directory, ptr_frame_info, (uint32)virtual_address, PERM_USER);
+		}
+		virtual_address = (void*)((uint32) virtual_address + PAGE_SIZE);
+	}
+	acquire_kspinlock(&(AllShares.shareslock));
+	share_exist->references =share_exist->references + 1;
+	release_kspinlock(&(AllShares.shareslock));
+	return share_exist->ID;
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 
 	// 	This function should share the required object in the heap of the current environment
 	//	starting from the given virtual_address with the specified permissions of the object: read_only/writable

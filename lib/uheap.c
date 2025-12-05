@@ -1,7 +1,8 @@
 #include <inc/lib.h>
 
-uint8 pages[NUM_OF_UHEAP_PAGES];   // 0 if free, 1 if used
-uint32 sizes[NUM_OF_UHEAP_PAGES];  // size of allocation at start
+uint8 pages[NUM_OF_UHEAP_PAGES]; 
+uint32 sizes[NUM_OF_UHEAP_PAGES]; 
+
 int initial_arrays = 0;
 int __firstTimeFlag = 1;
 void intializeArrayPages()
@@ -54,6 +55,7 @@ void* malloc(uint32 size)
 	if (size <= DYN_ALLOC_MAX_BLOCK_SIZE)
 		return alloc_block(size);
 
+	intializeArrayPages();
 	uint32 num = ROUNDUP(size, PAGE_SIZE) / PAGE_SIZE;
 	uint32 total = (USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE;
 	uint32 used = (uheapPageAllocBreak - uheapPageAllocStart) / PAGE_SIZE;
@@ -62,79 +64,45 @@ void* malloc(uint32 size)
 		return NULL;
 
 	uint32 found = used;
+	uint32 exact = used;
+	uint32 worst = used;
+	uint32 worst_sz = 0;
 	uint32 i = 0;
-	uint32 start, cnt;
 
-	uint32 strat = sys_get_uheap_strategy();
-
-	if (strat == UHP_PLACE_FIRSTFIT)
+	while (i < used)
 	{
-		// first fit  
-		while (i < used)
+		while (i < used && pages[i] == 1)
+			i++;
+		if (i >= used)
+			break;
+
+		uint32 start = i;
+		uint32 cnt = 0;
+		while (i < used && pages[i] == 0)
 		{
-			while (i < used && pages[i] == 1)
-				i++;
-			if (i >= used)
-				break;
-
-			start = i;
-			cnt = 0;
-
-			while (i < used && pages[i] == 0)
-			{
-				cnt++;
-				i++;
-			}
-
-			if (cnt >= num)
-			{
-				found = start;
-				break;
-			}
-		}
-	}
-	else
-	{
-		// custom fit - exact fit first, then worst fit
-		uint32 exact = used;
-		uint32 worst = used;
-		uint32 worst_sz = 0;
-
-		while (i < used)
-		{
-			while (i < used && pages[i] == 1)
-				i++;
-			if (i >= used)
-				break;
-
-			start = i;
-			cnt = 0;
-
-			while (i < used && pages[i] == 0)
-			{
-				cnt++;
-				i++;
-			}
-
-			if (cnt == num)
-			{
-				exact = start;
-				break;
-			}
-			if (cnt > num && cnt > worst_sz)
-			{
-				worst_sz = cnt;
-				worst = start;
-			}
+			cnt++;
+			i++;
 		}
 
-		if (exact != used)
-			found = exact;
-		else if (worst != used)
-			found = worst;
-	}
+		if (cnt == num)
+		{
+			exact = start;
+			break;
+		}
 
-	// need extend
+		if (cnt > num && cnt > worst_sz)
+		{
+			worst_sz = cnt;
+			worst = start;
+		}
+	}
+	
+	if (exact != used)
+		found = exact;
+	else if (worst != used)
+		found = worst;
+
+
 	if (found == used)
 	{
 		if (used + num > total)
@@ -161,14 +129,12 @@ void free(void* virtual_address)
 
 	uint32 va = (uint32)virtual_address;
 
-	// block allocator 
 	if (va >= dynAllocStart && va < dynAllocEnd)
 	{
 		free_block(virtual_address);
 		return;
 	}
 
-	// page allocator 
 	if (va < uheapPageAllocStart || va >= USER_HEAP_MAX)
 		panic("invalid address");
 
@@ -180,7 +146,6 @@ void free(void* virtual_address)
 
 	sys_free_user_mem(va, num * PAGE_SIZE);
 
-	// clear arrays into zeroes
 	uint32 i;
 	for (i = 0; i < num; i++)
 	{
@@ -195,13 +160,15 @@ void free(void* virtual_address)
 		last--; 
 	}
 }
+
+
   void* smalloc(char *sharedVarName, uint32 size, uint8 isWritable)
 {
+#if USE_KHEAP
 	//==============================================================
 	//DON'T CHANGE THIS CODE========================================
 	uheap_init();
 	if (size == 0) return NULL ;
-	//تبعي
 	if ((isWritable != 0)&&(isWritable != 1)) return NULL ;
 	if (sharedVarName == NULL) return NULL ;
 	//==============================================================
@@ -209,12 +176,12 @@ void free(void* virtual_address)
 	//TODO: [PROJECT'25.IM#3] SHARED MEMORY - #2 smalloc
 	//Your code is here
 	uint32 size2 = ROUNDUP(size, PAGE_SIZE);
-	uint32 num_pages_required = size2 >> PGSHIFT;
-	//custom fit 
-	if (num_pages_required == 0){
+	uint32 num_pages_need = size2 >> PGSHIFT;
+	//cf
+	if (num_pages_need == 0){
 		return NULL;
 	}
-	if (num_pages_required >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
+	if (num_pages_need >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
     return NULL;
     }
 	intializeArrayPages();
@@ -233,10 +200,10 @@ void free(void* virtual_address)
 				va_exact = page_begin;
 			}
 		}else{
-				if(count == num_pages_required){
+				if(count == num_pages_need){
 					break;
 				}
-				else if(count < num_pages_required) {
+				else if(count < num_pages_need) {
 					count = 0;
 					va_exact = 0;
 				}else{
@@ -249,17 +216,17 @@ void free(void* virtual_address)
 				}
 			}
 		}
-		if(((va_exact != 0) && (count == num_pages_required)) || ((va_exact != 0) && (count > num_pages_required) && (count > max_worst))){
+		if(((va_exact != 0) && (count == num_pages_need)) || ((va_exact != 0) && (count > num_pages_need) && (count > max_worst))){
             int ret = sys_create_shared_object(sharedVarName, size, isWritable, (void*)va_exact);
             if((ret == E_SHARED_MEM_EXISTS) || (ret == E_NO_SHARE)){
 		    	return NULL;
 	        }
 	        else{
-			    for(int i = 0 ; i < num_pages_required ; i++){
+			    for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_exact + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -273,11 +240,11 @@ void free(void* virtual_address)
 		    	return NULL;
 	        }
 	        else{
-				for(int i = 0 ; i < num_pages_required ; i++){
+				for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_worst + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -295,7 +262,7 @@ void free(void* virtual_address)
 			free_before_break ++;
 			va_break = va_break - PAGE_SIZE;
 		}
-		uint32 free_before_unused = num_pages_required - free_before_break;
+		uint32 free_before_unused = num_pages_need - free_before_break;
 		if(((USER_HEAP_MAX >>PGSHIFT) - (uheapPageAllocBreak >>PGSHIFT)) >= free_before_unused){
             if (uheapPageAllocBreak + (free_before_unused * PAGE_SIZE) > USER_HEAP_MAX) {
                 return NULL;
@@ -306,11 +273,11 @@ void free(void* virtual_address)
 		        return NULL;
 	        }
 	        else{
-			for(int i = 0 ; i < num_pages_required ; i++){
+			for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_break + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -322,6 +289,9 @@ void free(void* virtual_address)
 		}
 		
 		}
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	//Comment the following line
 	//panic("smalloc() is not implemented yet...!!");
@@ -331,7 +301,8 @@ void free(void* virtual_address)
 // [4] SHARE ON ALLOCATED SHARED VARIABLE:
 //========================================
 void* sget(int32 ownerEnvID, char *sharedVarName)
-{    
+{  
+#if USE_KHEAP 
 	//==============================================================
 	//DON'T CHANGE THIS CODE========================================
 	uheap_init();
@@ -342,12 +313,12 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 		return NULL;
 	}
 	uint32 size2 = ROUNDUP(size, PAGE_SIZE);
-	uint32 num_pages_required = size2 >> PGSHIFT;
-	//custom fit 
-	if (num_pages_required == 0){
+	uint32 num_pages_need = size2 >> PGSHIFT;
+	//cf 
+	if (num_pages_need == 0){
 		return NULL;
 	}
-	if (num_pages_required >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
+	if (num_pages_need >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
     	return NULL;
     }
 	intializeArrayPages();
@@ -366,10 +337,10 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 				va_exact = page_begin;
 			}
 		}else{
-				if(count == num_pages_required){
+				if(count == num_pages_need){
 					break;
 				}
-				else if(count < num_pages_required) {
+				else if(count < num_pages_need) {
 					count = 0;
 					va_exact = 0;
 				}else{
@@ -382,17 +353,17 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 				}
 			}
 		}
-		if(((va_exact != 0) && (count == num_pages_required)) || ((va_exact != 0) && (count > num_pages_required) && (count > max_worst))){
+		if(((va_exact != 0) && (count == num_pages_need)) || ((va_exact != 0) && (count > num_pages_need) && (count > max_worst))){
             int ret = sys_get_shared_object(ownerEnvID, sharedVarName,(void*)va_exact);
             if(ret == E_SHARED_MEM_NOT_EXISTS){
 		    	return NULL;
 	        }
 	        else{
-			    for(int i = 0 ; i < num_pages_required ; i++){
+			    for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_exact + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -406,11 +377,11 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 		    	return NULL;
 	        }
 	        else{
-				for(int i = 0 ; i < num_pages_required ; i++){
+				for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_worst + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -428,7 +399,7 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 			free_before_break ++;
 			va_break = va_break - PAGE_SIZE;
 		}
-		uint32 free_before_unused = num_pages_required - free_before_break;
+		uint32 free_before_unused = num_pages_need - free_before_break;
 		if(((USER_HEAP_MAX >>PGSHIFT) - (uheapPageAllocBreak >>PGSHIFT)) >= free_before_unused){
             if (uheapPageAllocBreak + (free_before_unused * PAGE_SIZE) > USER_HEAP_MAX) {
                 return NULL;
@@ -439,11 +410,11 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 		        return NULL;
 	        }
 	        else{
-			for(int i = 0 ; i < num_pages_required ; i++){
+			for(int i = 0 ; i < num_pages_need ; i++){
 					uint32 index = ((va_break + (i * PAGE_SIZE)) >> PGSHIFT) - (uheapPageAllocStart >> PGSHIFT);
                     pages[index] = 1;
 					if(i==0){
-					sizes[index] = num_pages_required;
+					sizes[index] = num_pages_need;
 					}else{
                     sizes[index] = 0;
 					}
@@ -455,6 +426,9 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 		}
 		
 	}
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	//Comment the following line
 	//panic("smalloc() is not implemented yet...!!");

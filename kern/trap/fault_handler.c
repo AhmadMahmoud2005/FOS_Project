@@ -166,9 +166,9 @@ void fault_handler(struct Trapframe *tf)
 			//(e.g. pointing to unmarked user heap page, kernel or wrong access rights),
 			//your code is here
 			int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
-			
+
 			bool illegal_address = fault_va >= USER_LIMIT;
-			
+
 			// Only check user/writeable permissions if the page is actually present
 			// A non-present page will be handled by the page fault handler (demand paging)
 			bool page_is_present = (perms != -1) && (perms & PERM_PRESENT);
@@ -178,7 +178,7 @@ void fault_handler(struct Trapframe *tf)
 			// For user heap, check UHPAGE only if the page exists in the page table
 			bool is_page_within_user_heap = (fault_va >= USER_HEAP_START && fault_va < USER_HEAP_MAX);
 			bool page_is_not_UHpage = is_page_within_user_heap && (perms != -1) && ((perms & PERM_UHPAGE) == 0);
-			
+
 			if (illegal_address || page_is_not_user || page_is_not_writeable || page_is_not_UHpage)
 				env_exit();
 			/*============================================================================================*/
@@ -186,7 +186,7 @@ void fault_handler(struct Trapframe *tf)
 
 		/*2022: Check if fault due to Access Rights */
 		int perms = pt_get_page_permissions(faulted_env->env_page_directory, fault_va);
-		if ((perms & PERM_PRESENT) && (perms & PERM_WRITEABLE))
+		if (perms & PERM_PRESENT)
 			panic("Page @va=%x is exist! page fault due to violation of ACCESS RIGHTS\n", fault_va) ;
 		/*============================================================================================*/
 
@@ -253,104 +253,15 @@ void table_fault_handler(struct Env * curenv, uint32 fault_va)
  */
 int get_optimal_num_faults(struct WS_List *initWorkingSet, int maxWSSize, struct PageRef_List *pageReferences)
 {
-	int totalFaults = 0;
-
-	// Edge case: no space means all references cause faults
-	if (maxWSSize <= 0)
-		return LIST_SIZE(pageReferences);
-
-	// Allocate temporary array to simulate working set
-	uint32 *workingPages = kmalloc(maxWSSize * sizeof(uint32));
-	if (workingPages == NULL)
-		panic("get_optimal_num_faults: kmalloc failed");
-
-	// Copy initial working set entries
-	int currentSize = 0;
-	struct WorkingSetElement *elem;
-	LIST_FOREACH(elem, initWorkingSet)
-	{
-		if (currentSize < maxWSSize)
-			workingPages[currentSize++] = ROUNDDOWN(elem->virtual_address, PAGE_SIZE);
-	}
-
-	// Process each reference in the stream
-	struct PageRefElement *ref;
-	LIST_FOREACH(ref, pageReferences)
-	{
-		uint32 pageAddr = ROUNDDOWN(ref->virtual_address, PAGE_SIZE);
-		
-		// Check if page already in working set
-		bool alreadyPresent = 0;
-		for (int idx = 0; idx < currentSize; idx++)
-		{
-			if (workingPages[idx] == pageAddr)
-			{
-				alreadyPresent = 1;
-				break;
-			}
-		}
-
-		if (alreadyPresent)
-			continue;
-
-		// Page fault occurred
-		totalFaults++;
-		
-		// If space available, just add it
-		if (currentSize < maxWSSize)
-		{
-			workingPages[currentSize++] = pageAddr;
-			continue;
-		}
-
-		// Need replacement - find optimal victim
-		int victimPosition = 0;
-		int farthestDistance = -1;
-		
-		for (int idx = 0; idx < currentSize; idx++)
-		{
-			uint32 candidatePage = workingPages[idx];
-			int distanceToNext = 0;
-			bool willBeUsedAgain = 0;
-			
-			// Look forward to find next use
-			struct PageRefElement *nextRef = LIST_NEXT(ref);
-			while (nextRef != NULL)
-			{
-				distanceToNext++;
-				if (ROUNDDOWN(nextRef->virtual_address, PAGE_SIZE) == candidatePage)
-				{
-					willBeUsedAgain = 1;
-					break;
-				}
-				nextRef = LIST_NEXT(nextRef);
-			}
-
-			// Page never used again is best victim
-			if (!willBeUsedAgain)
-			{
-				victimPosition = idx;
-				break;
-			}
-			
-			// Otherwise pick the one used farthest in future
-			if (distanceToNext > farthestDistance)
-			{
-				farthestDistance = distanceToNext;
-				victimPosition = idx;
-			}
-		}
-		
-		workingPages[victimPosition] = pageAddr;
-	}
-
-	kfree(workingPages);
-	return totalFaults;
+	//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #2 get_optimal_num_faults
+	//Your code is here
+	//Comment the following line
+	panic("get_optimal_num_faults() is not implemented yet...!!");
 }
 
 void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 {
-#if USE_KHEAP
+	#if USE_KHEAP
 	fault_va = ROUNDDOWN(fault_va, PAGE_SIZE);
 	if (isPageReplacmentAlgorithmOPTIMAL())
 	{
@@ -358,13 +269,13 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 
 		// Get pointer to active working set for this process
 		struct WS_List *activeWS = &(faulted_env->ActiveList);
-		
+
 		// Initialize active list if needed
 		if (LIST_FIRST(activeWS) == NULL && LIST_LAST(activeWS) == NULL && LIST_SIZE(activeWS) == 0)
 		{
 			LIST_INIT(activeWS);
 		}
-		
+
 		// On first fault, populate active WS from initial snapshot
 		if (LIST_SIZE(&(faulted_env->referenceStreamList)) == 0 && LIST_SIZE(activeWS) == 0)
 		{
@@ -384,7 +295,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 		// Check if frame exists for this VA
 		uint32 *ptr_table = NULL;
 		struct FrameInfo *frameInfo = get_frame_info(faulted_env->env_page_directory, fault_va, &ptr_table);
-		
+
 		if (frameInfo == NULL)
 		{
 			// No frame allocated - need to bring page in
@@ -428,7 +339,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				break;
 			}
 		}
-		
+
 		if (!pageTracked)
 		{
 			// Active WS is full - need to reset it
@@ -500,7 +411,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 					env_exit();
 				}
 			}
-			
+
 			// Reflect the changes in the page working set list (i.e. add new element to list & update its last one)
 			struct WorkingSetElement *wsElement = env_page_ws_list_create_element(faulted_env, fault_va);
 			// Insert before page_last_WS_element to maintain correct circular order after invalidation
@@ -616,7 +527,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				uint32 min_time_stamp = (uint32)-1;
 				while (tempElem != NULL) {
 					unsigned int cur_time_stamp = tempElem->time_stamp;
-					if (tempElem->empty == 0 && cur_time_stamp <= min_time_stamp) {
+					if (tempElem->empty == 0 && cur_time_stamp < min_time_stamp) {
 						min_time_stamp = cur_time_stamp;
 						victimWSElement = tempElem;
 					}
@@ -687,22 +598,22 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 						curr = LIST_NEXT(curr);
 						if (curr == NULL) curr = LIST_FIRST(&(faulted_env->page_WS_list));
 					} while(curr != start);
-					if (found) break;
+						if (found) break;
 
-					// Try 2:
-					do {
-						uint32 perms = pt_get_page_permissions(faulted_env->env_page_directory, curr->virtual_address);
-						if ((perms & PERM_USED) == 0) {
-							victimWSElement = curr;
-							found = 1;
-							break;
-						}
+						// Try 2:
+						do {
+							uint32 perms = pt_get_page_permissions(faulted_env->env_page_directory, curr->virtual_address);
+							if ((perms & PERM_USED) == 0) {
+								victimWSElement = curr;
+								found = 1;
+								break;
+							}
 
-						pt_set_page_permissions(faulted_env->env_page_directory, curr->virtual_address, 0, PERM_USED);
-						curr = LIST_NEXT(curr);
-						if (curr == NULL) curr = LIST_FIRST(&(faulted_env->page_WS_list));
-					} while(curr != start);
-					if (found) break;
+							pt_set_page_permissions(faulted_env->env_page_directory, curr->virtual_address, 0, PERM_USED);
+							curr = LIST_NEXT(curr);
+							if (curr == NULL) curr = LIST_FIRST(&(faulted_env->page_WS_list));
+						} while(curr != start);
+							if (found) break;
 				}
 
 				// get victim's virtual address
@@ -752,14 +663,17 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				struct WorkingSetElement *nextElem = LIST_NEXT(victimWSElement);
 				if (nextElem == NULL)
 					nextElem = LIST_FIRST(&(faulted_env->page_WS_list));
-				faulted_env->page_last_WS_element = nextElem;				
+				faulted_env->page_last_WS_element = nextElem;
 			}
 		}
 	}
-#endif
+	#endif
 }
 
 void __page_fault_handler_with_buffering(struct Env * curenv, uint32 fault_va)
 {
 	panic("this function is not required...!!");
 }
+
+
+
