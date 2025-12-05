@@ -117,11 +117,11 @@ struct Share* alloc_share(int32 ownerID, char* shareName, uint32 size, uint8 isW
 	}
 	shared_ob->ownerID = ownerID ;
 	int i;
-    for (i = 0; i < 63 && shareName[i]; i++)
+	for(i = 0 ; i < 63 && shareName[i] ; i++ )
 	{
-        shared_ob->name[i] = shareName[i];
+		shared_ob->name[i] = shareName[i];
 	}
-    shared_ob->name[i] = '\0';
+	shared_ob->name[i] = '\0';
 	shared_ob->size = size;
 	shared_ob->isWritable = isWritable;
 	shared_ob->references = 1;
