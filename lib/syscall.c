@@ -289,6 +289,10 @@ void sys_env_set_priority(int32 envID, int priority)
 {
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 System Calls - Add suitable code here
 	//Your code is here
+#if USE_KHEAP
+	syscall(sys_env_set_priority, envID, priority, 0, 0, 0);
+		return ;
+#endif
 	//Comment the following line
 	panic("sys_env_set_priority() is not implemented yet...!!");
 }

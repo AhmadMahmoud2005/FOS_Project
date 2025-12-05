@@ -68,10 +68,9 @@ void _main(void)
 	}
 	cprintf_colored(TEXT_cyan, "%~\nChecking Number of Disk Access... \n");
 	{
-		uint32 expectedNumOfFaults = 17; // 17
-		uint32 expectedNumOfWrites = 6; // 6
-		uint32 expectedNumOfReads = 17; // 17
-		cprintf("%d %d %d", myEnv->nPageIn, myEnv->nPageOut, myEnv->pageFaultsCounter);
+		uint32 expectedNumOfFaults = 17;
+		uint32 expectedNumOfWrites = 6;
+		uint32 expectedNumOfReads = 17;
 		if (myEnv->nPageIn != expectedNumOfReads || myEnv->nPageOut != expectedNumOfWrites || myEnv->pageFaultsCounter != expectedNumOfFaults)
 			panic("LRU alg. failed.. unexpected number of disk access");
 	}

@@ -692,6 +692,7 @@ void env_set_priority(int envID, int priority)
 {
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 env_set_priorit
 		//Your code is here
+#if USE_KHEAP
 		 acquire_kspinlock(&ProcessQueues.qlock);
 		
 		struct Env* en ;
@@ -714,16 +715,19 @@ void env_set_priority(int envID, int priority)
 		release_kspinlock (&ProcessQueues.qlock);
 
 		
-	// panic("env_set_priority() is not implemented yet...!!");
+
+	//panic("env_set_priority() is not implemented yet...!!");
+#endif
 }
-uint32 starvTH =0 ;
+		uint32 starvTH =0 ;
 void sched_set_starv_thresh(uint32 starvThresh)
 {
-//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 sched_set_starv_thresh
+	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 sched_set_starv_thresh
 	//Your code is here
-	
+#if USE_KHEAP
 	starvTH =starvThresh;
 
 	//Comment the following line
-	// panic("sched_set_starv_thresh() is not implemented yet...!!");
+	//panic("sched_set_starv_thresh() is not implemented yet...!!");
+#endif
 }

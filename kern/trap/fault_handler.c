@@ -522,7 +522,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				//Comment the following line
 				// panic("page_fault_handler().REPLACEMENT is not implemented yet...!!");
 
-				// Step 1: Find the Victim Page (Lowest Time Stamp)
+				// step 1: find the victim page (lowest time stamp)
 				struct WorkingSetElement *tempElem = LIST_FIRST(&faulted_env->page_WS_list);
 				uint32 min_time_stamp = (uint32)-1;
 				while (tempElem != NULL) {
@@ -536,7 +536,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 
 				if (victimWSElement == NULL) return;
 
-				// Step 2: Swap Out the Victim Page
+				// step 2: swap out the victim page
 				uint32 *ppd = faulted_env->env_page_directory;
 				uint32 victimVa = victimWSElement->virtual_address;
 				uint32 *page_table = NULL;
@@ -552,6 +552,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				pt_clear_page_table_entry(ppd, victimVa);
 				tlb_invalidate(ppd, (void*)victimVa);
 
+				// step 3: allocate&insert the faulted page in the ws
 				allocate_frame(&victimFrame);
 				map_frame(ppd, victimFrame, fault_va, (PERM_PRESENT | PERM_USER | PERM_WRITEABLE));
 				int ret = pf_read_env_page(faulted_env, (void *)fault_va);
@@ -568,7 +569,7 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 				victimWSElement->virtual_address = fault_va;
 				victimWSElement->empty = 0;
 				victimWSElement->time_stamp = (1U << 31);
-				// pt_set_page_permissions(ppd, victimWSElement->virtual_address, PERM_USED, 0);
+				pt_set_page_permissions(ppd, victimWSElement->virtual_address, PERM_USED, 0);
 			}
 			else if (isPageReplacmentAlgorithmModifiedCLOCK())
 			{
@@ -653,7 +654,6 @@ void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
 						unmap_frame(faulted_env->env_page_directory, fault_va);
 						env_exit();
 					}
-					// For stack/heap, page will be added to PF when this page is evicted later
 				}
 
 				// update the WS element with new VA (reuse the element)

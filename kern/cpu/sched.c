@@ -27,7 +27,7 @@ static struct Env* (*sched_next[])(void) = {
 [SCH_PRIRR]   fos_scheduler_PRIRR,
 
 };
-
+ uint32 s_t=0;
 //===================================
 // [1] Default Scheduler Initializer:
 //===================================
@@ -222,13 +222,30 @@ void sched_init_BSD(uint8 numOfLevels, uint8 quantum)
 void sched_init_PRIRR(uint8 numOfPriorities, uint8 quantum, uint32 starvThresh)
 {
 	{
+
 		//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #2 sched_init_PRIRR
 		//Your code is here
+
+			num_of_ready_queues = 1;
+		#if USE_KHEAP
+			sched_delete_ready_queues();
+			ProcessQueues.env_ready_queues = kmalloc(sizeof(struct Env_Queue));
+			quantums = kmalloc(num_of_ready_queues * sizeof(uint8)) ;
+		#endif
+			for (int i=0 ; i<numOfPriorities ; i++){
+				quantums[i]=quantum;
+				init_queue(&(ProcessQueues.env_ready_queues[i]));
+			}
+			//=========================================
+			//DON'T CHANGE THESE LINES=================
+			uint16 cnt0 = kclock_read_cnt0_latch() ; //read after write to ensure it's set to the desired value
+			cprintf("*	RR scheduler with initial clock = %d\n", cnt0);
+			mycpu()->scheduler_status = SCH_STOPPED;
+			scheduler_method = SCH_RR;
+			//=========================================
+			//=========================================
 		//Comment the following line
-		panic("sched_init_PRIRR() is not implemented yet...!!");
-
-
-
+		panic("sched_init_PRIRR() is n//////ot implemented yet...!!");
 	}
 	//=========================================
 	//DON'T CHANGE THESE LINES=================
@@ -306,12 +323,29 @@ struct Env* fos_scheduler_BSD()
 //=============================
 struct Env* fos_scheduler_PRIRR()
 {
+
 	/*To protect process Qs (or info of current process) in multi-CPU************************/
 	if(!holding_kspinlock(&ProcessQueues.qlock))
 		panic("fos_scheduler_PRIRR: q.lock is not held by this CPU while it's expected to be.");
 	/****************************************************************************************/
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #3 fos_scheduler_PRIRR
 	//Your code is here
+	struct Env* cur_env = get_cpu_proc();
+
+	if (cur_env != NULL && cur_env -> env_status == ENV_RUNNING ){
+		sched_insert_ready (cur_env);
+	}
+	struct Env* next = NULL;
+	for (int i =0; i < num_of_ready_queues; i++ ){
+		if (!LIST_EMPTY(&ProcessQueues.env_ready_queues[i])){
+			next = LIST_FIRST(&ProcessQueues.env_ready_queues[i]);
+			remove_from_queue(&ProcessQueues.env_ready_queues[i], next);
+			return next;
+		}
+	}
+
+	kclock_set_quantum(quantums[0]);
+
 	//Comment the following line
 	panic("fos_scheduler_PRIRR() is not implemented yet...!!");
 }
@@ -326,12 +360,47 @@ void clock_interrupt_handler(struct Trapframe* tf)
 	{
 		//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #4 clock_interrupt_handler
 		//Your code is here
-		//Comment the following line
-		panic("clock_interrupt_handler() is not implemented yet...!!");
+		acquire_kspinlock(&ProcessQueues.qlock);
 
+				for (int i = 0; i < num_of_ready_queues; i++)
+				{
+					int Qsize = queue_size(&ProcessQueues.env_ready_queues[i]);
+					int counter = 0;
+					struct Env *TEMP;
+					for (int j = 0; j < Qsize; j++)
+					{
+						if (j == 0)
+						{
+							TEMP = LIST_FIRST(&ProcessQueues.env_ready_queues[i]);
+						}
+						else
+						{
+							TEMP = LIST_NEXT(TEMP);
+						}
+						if (TEMP == NULL)
+						{
+							break;
+						}
+						counter = ticks - TEMP->nClocks;
+						if (counter >= s_t)
+						{
+							TEMP->priority--;
+							remove_from_queue(&ProcessQueues.env_ready_queues[i], TEMP);
+							if (TEMP->priority < 0)
+							{
+								TEMP->priority = 0;
+							}
+							TEMP->nClocks= ticks;
+							enqueue(&ProcessQueues.env_ready_queues[TEMP->priority], TEMP);
+						}
+					}
+				}
+				// Comment the following line
+				// panic("clock_interrupt_handler() is not implemented yet...!!");
 
+				release_kspinlock(&ProcessQueues.qlock);
+			}
 
-	}
 
 	/********DON'T CHANGE THESE LINES***********/
 	ticks++ ;
@@ -347,6 +416,7 @@ void clock_interrupt_handler(struct Trapframe* tf)
 	else
 	{
 		p->nClocks++ ;
+
 		if(isPageReplacmentAlgorithmLRU(PG_REP_LRU_TIME_APPROX))
 		{
 			update_WS_time_stamps();
@@ -354,10 +424,11 @@ void clock_interrupt_handler(struct Trapframe* tf)
 		//cprintf("\n***************\nClock Handler\n***************\n") ;
 		//fos_scheduler();
 		yield();
-	}
-	/*****************************************/
-}
 
+		}
+
+	/*****************************************/
+	}
 //===================================================================
 // [9] Update LRU Timestamp of WS Elements
 //	  (Automatically Called Every Quantum in case of LRU Time Approx)
@@ -370,18 +441,12 @@ void update_WS_time_stamps()
 	struct Env* p = get_cpu_proc();
 	struct WorkingSetElement *tempElem = LIST_FIRST(&p->page_WS_list);
 	while (tempElem != NULL) {
-		// 1. Check permissions (Used Bit)
 		int perms = pt_get_page_permissions(p->env_page_directory, tempElem->virtual_address);
 		uint32 used = (perms & PERM_USED);
 
-		// 2. Aging update: shift + insert MSB = Used bit
 		tempElem->time_stamp >>= 1;
 		tempElem->time_stamp |= (used << 31);
-
-		// 3. Clear the Used Bit
 		pt_set_page_permissions(p->env_page_directory, tempElem->virtual_address, 0, PERM_USED);
-
-		// Move to next WSE
 		tempElem = LIST_NEXT(tempElem);
 	}
 	// panic("update_WS_time_stamps is not implemented yet...!!");

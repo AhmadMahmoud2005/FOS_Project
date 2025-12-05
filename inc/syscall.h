@@ -52,8 +52,10 @@ enum
 	SYS_free_user_mem,
 	//TODO: [PROJECT'25.IM#4] CPU SCHEDULING - #1 System Calls - Add suitable code here
 	//Your code is here
+#if USE_KHEAP
 
-	//=====================================================================
+    SYS_env_set_priority,
+#endif	
 	NSYSCALLS
 };
 
