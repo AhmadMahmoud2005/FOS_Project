@@ -47,6 +47,7 @@ void return_page(void* va)
 
 void* malloc(uint32 size)
 {
+#if USE_KHEAP 
 	uheap_init();
 
 	if (size == 0)
@@ -118,10 +119,14 @@ void* malloc(uint32 size)
 	sizes[found] = num;
 
 	return (void*)va;
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 }
 
 void free(void* virtual_address)
 {
+	#if USE_KHEAP 
 	if (virtual_address == NULL)
 		return;
 
@@ -159,6 +164,9 @@ void free(void* virtual_address)
 		uheapPageAllocBreak -= PAGE_SIZE;
 		last--; 
 	}
+#else
+	panic("not handled when KERN HEAP is disabled");
+#endif
 }
 
 
@@ -177,7 +185,6 @@ void free(void* virtual_address)
 	//Your code is here
 	uint32 size2 = ROUNDUP(size, PAGE_SIZE);
 	uint32 num_pages_need = size2 >> PGSHIFT;
-	//cf
 	if (num_pages_need == 0){
 		return NULL;
 	}
@@ -314,7 +321,6 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 	}
 	uint32 size2 = ROUNDUP(size, PAGE_SIZE);
 	uint32 num_pages_need = size2 >> PGSHIFT;
-	//cf 
 	if (num_pages_need == 0){
 		return NULL;
 	}
