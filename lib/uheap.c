@@ -2,21 +2,9 @@
 
 uint8 pages[NUM_OF_UHEAP_PAGES]; 
 uint32 sizes[NUM_OF_UHEAP_PAGES]; 
-
 int initial_arrays = 0;
+
 int __firstTimeFlag = 1;
-void intializeArrayPages()
-{
-    if (initial_arrays == 0)
-    {
-        for (uint32 i = 0; i < NUM_OF_UHEAP_PAGES; i++)
-        {
-            pages[i] = 0;
-            sizes[i] = 0;
-        }
-        initial_arrays = 1;
-    }
-}
 
 void uheap_init()
 {
@@ -56,7 +44,15 @@ void* malloc(uint32 size)
 	if (size <= DYN_ALLOC_MAX_BLOCK_SIZE)
 		return alloc_block(size);
 
-	intializeArrayPages();
+	if (initial_arrays == 0)
+    {
+        for (uint32 i = 0; i < NUM_OF_UHEAP_PAGES; i++)
+        {
+            pages[i] = 0;
+            sizes[i] = 0;
+        }
+        initial_arrays = 1;
+    }
 	uint32 num = ROUNDUP(size, PAGE_SIZE) / PAGE_SIZE;
 	uint32 total = (USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE;
 	uint32 used = (uheapPageAllocBreak - uheapPageAllocStart) / PAGE_SIZE;
@@ -191,7 +187,15 @@ void free(void* virtual_address)
 	if (num_pages_need >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
     return NULL;
     }
-	intializeArrayPages();
+	if (initial_arrays == 0)
+    {
+        for (uint32 i = 0; i < NUM_OF_UHEAP_PAGES; i++)
+        {
+            pages[i] = 0;
+            sizes[i] = 0;
+        }
+        initial_arrays = 1;
+    }
 
 	int max_worst = 0;
 	uint32 va_worst = 0 ;
@@ -327,7 +331,15 @@ void* sget(int32 ownerEnvID, char *sharedVarName)
 	if (num_pages_need >= ((USER_HEAP_MAX - uheapPageAllocStart) / PAGE_SIZE)){
     	return NULL;
     }
-	intializeArrayPages();
+	if (initial_arrays == 0)
+    {
+        for (uint32 i = 0; i < NUM_OF_UHEAP_PAGES; i++)
+        {
+            pages[i] = 0;
+            sizes[i] = 0;
+        }
+        initial_arrays = 1;
+    }
 
 	int max_worst = 0;
 	uint32 va_worst = 0 ;
