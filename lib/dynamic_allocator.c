@@ -233,16 +233,13 @@ void free_block(void *va)
         return;
     }
 	
-	//insert block to free block list
 	struct BlockElement *current = (struct BlockElement*) va;
 	LIST_INSERT_TAIL(&freeBlockLists[index_block] , current);
-	//update the num of free
 	int64 index_page = Get_Page_Num(va);
 	if(index_page == -1){
 		return;
 	}
 	pageBlockInfoArr[index_page].num_of_free_blocks = pageBlockInfoArr[index_page].num_of_free_blocks + 1;
-    //if the page totally free
 	uint32 page_size = 4096;
 	uint32 block_size_var = (uint32) pageBlockInfoArr[index_page].block_size;
 	if (block_size_var == 0) {
