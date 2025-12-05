@@ -367,22 +367,22 @@ void update_WS_time_stamps()
 	//TODO: [PROJECT'25.IM#6] FAULT HANDLER II - #1 update_WS_time_stamps
 	//Your code is here
 	//Comment the following line
-
 	struct Env* p = get_cpu_proc();
-	struct WorkingSetElement *tempElem;
-	LIST_FOREACH_SAFE(tempElem, &(p->page_WS_list), WorkingSetElement) {
-		// 1. Check permissions (Used Bit) using pt_get_page_permissions
+	struct WorkingSetElement *tempElem = LIST_FIRST(&p->page_WS_list);
+	while (tempElem != NULL) {
+		// 1. Check permissions (Used Bit)
 		int perms = pt_get_page_permissions(p->env_page_directory, tempElem->virtual_address);
 		uint32 used = (perms & PERM_USED);
 
-		// 2. Shift right and add Used Bit to tempElem->time_stamp
+		// 2. Aging update: shift + insert MSB = Used bit
 		tempElem->time_stamp >>= 1;
-		tempElem->time_stamp |= (used << 31); 
-		
-		// 3. Clear the Used Bit using pt_set_page_permissions
+		tempElem->time_stamp |= (used << 31);
+
+		// 3. Clear the Used Bit
 		pt_set_page_permissions(p->env_page_directory, tempElem->virtual_address, 0, PERM_USED);
+
+		// Move to next WSE
+		tempElem = LIST_NEXT(tempElem);
 	}
-
 	// panic("update_WS_time_stamps is not implemented yet...!!");
-
 }

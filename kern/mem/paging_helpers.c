@@ -70,9 +70,12 @@ inline int pt_get_page_permissions(uint32* directory, uint32 virtual_address )
 //REMEMBER: to invalidate the TLB cache
 inline void pt_clear_page_table_entry(uint32* directory, uint32 virtual_address)
 {
-	//TODO: PRACTICE: fill this function.
-	//Comment the following line
-	panic("pt_clear_page_table_entry() is not implemented yet!");
+    uint32 *pt = NULL;
+    int ret = get_page_table(directory, virtual_address, &pt);
+    if (ret == TABLE_NOT_EXIST)
+        panic("pt_clear_page_table_entry: Page table does not exist");
+    pt[PTX(virtual_address)] = 0;
+    tlbflush();
 }
 
 /***********************************************************************************************/

@@ -921,6 +921,7 @@ void* create_user_kern_stack(uint32* ptr_user_page_directory)
 	}
 	pt_set_page_permissions(ptr_user_page_directory, (uint32)stack_ptr, 0, PERM_PRESENT);
 	// __cur_k_stk += KERNEL_STACK_SIZE;
+	// cprintf("Create: Finished\n");
 	return stack_ptr;
 	//allocate space for the user kernel stack.
 	//remember to leave its bottom page as a GUARD PAGE (i.e. not mapped)

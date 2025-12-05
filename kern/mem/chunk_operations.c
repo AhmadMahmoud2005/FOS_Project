@@ -147,16 +147,31 @@ void* sys_sbrk(int numOfPages)
 //=====================================
 void allocate_user_mem(struct Env* e, uint32 virtual_address, uint32 size)
 {
-	/*====================================*/
-	/*Remove this line before start coding*/
-//		inctst();
-//		return;
-	/*====================================*/
+	if (size == 0)
+		return;
 
-	//TODO: [PROJECT'25.IM#2] USER HEAP - #2 allocate_user_mem
-	//Your code is here
-	//Comment the following line
-	panic("allocate_user_mem() is not implemented yet...!!");
+	uint32 start_va = ROUNDDOWN(virtual_address, PAGE_SIZE);
+	uint32 end_va = ROUNDUP(virtual_address + size, PAGE_SIZE);
+
+	uint32 va;
+	for (va = start_va; va < end_va; va += PAGE_SIZE)
+	{
+		uint32 *ptr_page_table = NULL;
+		get_page_table(e->env_page_directory, va, &ptr_page_table);
+
+		if (ptr_page_table == NULL)
+		{
+#if USE_KHEAP
+			ptr_page_table = create_page_table(e->env_page_directory, va);
+#else
+			panic("allocate_user_mem: page table not exist");
+#endif
+		}
+
+		uint32 page_table_entry = ptr_page_table[PTX(va)];
+		ptr_page_table[PTX(va)] = PERM_USER | PERM_WRITEABLE | PERM_UHPAGE;
+		tlb_invalidate(e->env_page_directory, (void *)va);
+	}
 }
 
 //=====================================
@@ -164,17 +179,37 @@ void allocate_user_mem(struct Env* e, uint32 virtual_address, uint32 size)
 //=====================================
 void free_user_mem(struct Env* e, uint32 virtual_address, uint32 size)
 {
-	/*====================================*/
-	/*Remove this line before start coding*/
-//		inctst();
-//		return;
-	/*====================================*/
+	if (size == 0)
+		return;
 
-	//TODO: [PROJECT'25.IM#2] USER HEAP - #4 free_user_mem
-	//Your code is here
-	//Comment the following line
-	panic("free_user_mem() is not implemented yet...!!");
+	uint32 start_va = ROUNDDOWN(virtual_address, PAGE_SIZE);
+	uint32 end_va = ROUNDUP(virtual_address + size, PAGE_SIZE);
+	uint32 va;
+
+	for (va = start_va; va < end_va; va += PAGE_SIZE)
+	{
+		pf_remove_env_page(e, va);
+
+		uint32 *ptr_page_table = NULL;
+		get_page_table(e->env_page_directory, va, &ptr_page_table);
+
+		if (ptr_page_table == NULL)
+			continue;
+
+		uint32 page_table_entry = ptr_page_table[PTX(va)];
+
+		if (page_table_entry & PERM_PRESENT)
+		{
+			unmap_frame(e->env_page_directory, va);
+			env_page_ws_invalidate(e, va);
+		}
+
+		ptr_page_table[PTX(va)] = 0;
+
+		tlb_invalidate(e->env_page_directory, (void *)va);
+	}
 }
+
 
 //=====================================
 // 4) FREE USER MEMORY (BUFFERING):
