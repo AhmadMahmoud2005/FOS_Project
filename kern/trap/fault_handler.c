@@ -253,10 +253,99 @@ void table_fault_handler(struct Env * curenv, uint32 fault_va)
  */
 int get_optimal_num_faults(struct WS_List *initWorkingSet, int maxWSSize, struct PageRef_List *pageReferences)
 {
-	//TODO: [PROJECT'25.IM#1] FAULT HANDLER II - #2 get_optimal_num_faults
-	//Your code is here
-	//Comment the following line
-	panic("get_optimal_num_faults() is not implemented yet...!!");
+	int totalFaults = 0;
+
+	// Edge case: no space means all references cause faults
+	if (maxWSSize <= 0)
+		return LIST_SIZE(pageReferences);
+
+	// Allocate temporary array to simulate working set
+	uint32 *workingPages = kmalloc(maxWSSize * sizeof(uint32));
+	if (workingPages == NULL)
+		panic("get_optimal_num_faults: kmalloc failed");
+
+	// Copy initial working set entries
+	int currentSize = 0;
+	struct WorkingSetElement *elem;
+	LIST_FOREACH(elem, initWorkingSet)
+	{
+		if (currentSize < maxWSSize)
+			workingPages[currentSize++] = ROUNDDOWN(elem->virtual_address, PAGE_SIZE);
+	}
+
+	// Process each reference in the stream
+	struct PageRefElement *ref;
+	LIST_FOREACH(ref, pageReferences)
+	{
+		uint32 pageAddr = ROUNDDOWN(ref->virtual_address, PAGE_SIZE);
+		
+		// Check if page already in working set
+		bool alreadyPresent = 0;
+		for (int idx = 0; idx < currentSize; idx++)
+		{
+			if (workingPages[idx] == pageAddr)
+			{
+				alreadyPresent = 1;
+				break;
+			}
+		}
+
+		if (alreadyPresent)
+			continue;
+
+		// Page fault occurred
+		totalFaults++;
+		
+		// If space available, just add it
+		if (currentSize < maxWSSize)
+		{
+			workingPages[currentSize++] = pageAddr;
+			continue;
+		}
+
+		// Need replacement - find optimal victim
+		int victimPosition = 0;
+		int farthestDistance = -1;
+		
+		for (int idx = 0; idx < currentSize; idx++)
+		{
+			uint32 candidatePage = workingPages[idx];
+			int distanceToNext = 0;
+			bool willBeUsedAgain = 0;
+			
+			// Look forward to find next use
+			struct PageRefElement *nextRef = LIST_NEXT(ref);
+			while (nextRef != NULL)
+			{
+				distanceToNext++;
+				if (ROUNDDOWN(nextRef->virtual_address, PAGE_SIZE) == candidatePage)
+				{
+					willBeUsedAgain = 1;
+					break;
+				}
+				nextRef = LIST_NEXT(nextRef);
+			}
+
+			// Page never used again is best victim
+			if (!willBeUsedAgain)
+			{
+				victimPosition = idx;
+				break;
+			}
+			
+			// Otherwise pick the one used farthest in future
+			if (distanceToNext > farthestDistance)
+			{
+				farthestDistance = distanceToNext;
+				victimPosition = idx;
+			}
+		}
+		
+		workingPages[victimPosition] = pageAddr;
+	}
+
+	kfree(workingPages);
+	return totalFaults;
 }
 
 void page_fault_handler(struct Env * faulted_env, uint32 fault_va)
@@ -674,6 +763,7 @@ void __page_fault_handler_with_buffering(struct Env * curenv, uint32 fault_va)
 {
 	panic("this function is not required...!!");
 }
+
 
 
 
